@@ -2,8 +2,8 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view, throttle_classes
 from rest_framework import status
 from django.shortcuts import get_object_or_404
-from .models import MenuItem, Category,Cart
-from .serializers import MenuItemGetSerializer, CategorySerializer,MenuItemPostSerializer,CartGetSerializer,CartPostSerializer
+from .models import MenuItem, Category,Cart,Order,OrderItem
+from .serializers import MenuItemGetSerializer, CategorySerializer,MenuItemPostSerializer,CartGetSerializer,CartPostSerializer,OrderGetSerializer,OrderPostSerializer,OrderItemPostSerializer,OrderItemGetSerializer
 from django.db.models import Q
 from django.core.paginator import Paginator, EmptyPage
 from rest_framework.permissions import IsAuthenticated
@@ -13,10 +13,13 @@ from rest_framework.throttling import UserRateThrottle  # for authenticated user
 import json
 from django.contrib.auth.models import User,Group
 from rest_framework.permissions import IsAdminUser
+import datetime
 
 ##menu_item create
 
 @api_view(['GET', 'POST'])
+@throttle_classes([UserRateThrottle])
+#@permission_classes([IsAdminUser])
 def category_items(request):
     if (request.method == 'GET'):
         items = Category.objects.all()
@@ -200,10 +203,12 @@ def cart_items(request):
     if(manager_group==False and delivery_crew_group==False):
         if (request.method == 'GET'):
             items = Cart.objects.filter(user=request.user)
-
+            
             return_items = CartGetSerializer(items, many=True)
+            
             return Response(return_items.data)
         elif (request.method == 'POST'):
+            ##req.body only need menuitem and quantity field
             menuitem= get_object_or_404(MenuItem, pk=request.data['menuitem']) ##get unitprice using the menuitem id!
             request.data['unit_price']=menuitem.price
             request.data['price']=request.data['quantity'] * menuitem.price
@@ -219,3 +224,78 @@ def cart_items(request):
     else:
         return Response({"message":"Not authorized to access cart"})
 
+
+@api_view(['POST','GET'])
+@permission_classes([IsAuthenticated])
+@throttle_classes([UserRateThrottle])
+
+def order_items(request):
+    if(request.method=='POST'):
+        total=0
+        ##create an order record in order table.req.body no need anything since everything is from the cart
+        items = Cart.objects.filter(user=request.user)
+        cart_items = CartGetSerializer(items, many=True)
+        data={}
+        data['user']=request.user.id
+        data['date']= datetime.datetime.now().date()
+        for item in cart_items.data:
+            total=total+float(item['price'])
+        
+        data['total']=total
+        serialized_order = OrderPostSerializer(data=data)
+        serialized_order.is_valid(raise_exception=True)
+        saved_order=serialized_order.save()
+        print("order record created")
+        
+        ##items in cart transferred to order item table
+        for item in cart_items.data:
+            new_order_item={}
+            new_order_item['order']=saved_order.pk
+            new_order_item['menuitem']=item['menuitem']['id']
+            new_order_item['quantity']=item['quantity']
+            new_order_item['unit_price']=item['unit_price']
+            new_order_item['price']=item['price']
+            serialized_order_item = OrderItemPostSerializer(data=new_order_item)
+            serialized_order_item.is_valid(raise_exception=True)
+            serialized_order_item.save()
+        
+        ##delete items in cart
+        items.delete()
+        return Response({"message":"Order created.You will be receiving your food shortly"})    
+            
+    if(request.method=='GET'):
+        if(request.user.groups.filter(name='Manager').exists()):
+            orders=OrderItem.objects.all()
+            return_items = OrderItemGetSerializer(orders, many=True)
+            
+            
+        else:
+            if(request.user.groups.filter(name='Delivery Crew').exists()):
+                orders=OrderItem.objects.filter(order__delivery_crew=request.user)
+                return_items=OrderItemGetSerializer(orders,many=True)
+            else:
+                orders=OrderItem.objects.filter(order__user=request.user)
+                return_items = OrderItemGetSerializer(orders, many=True)
+            
+        return Response(return_items.data)
+    
+
+
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+@throttle_classes([UserRateThrottle])
+
+def single_order_item(request,id):
+    order_item = get_object_or_404(OrderItem, pk=id)
+    
+    if(request.method=='GET'):
+        return_item = OrderItemGetSerializer(order_item)
+       
+        if(return_item.data['order']['user']['id']==request.user.id):
+            return Response(return_item.data)
+        else:
+            return Response({"message":"Not authorized to see this order item"})
+        

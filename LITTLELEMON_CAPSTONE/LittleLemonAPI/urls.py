@@ -10,7 +10,9 @@ urlpatterns = [
     path('groups/manager/users/<int:id>',views.delete_manager),
     path('groups/delivery-crew/users',views.delivery_crew),
     path('groups/delivery-crew/users/<int:id>',views.delete_delivery_crew),
-    path('cart/menu-items',views.cart_items)
+    path('cart/menu-items',views.cart_items),
+    path('orders',views.order_items),
+    path('orders/<int:id>',views.single_order_item)
     
     
 
