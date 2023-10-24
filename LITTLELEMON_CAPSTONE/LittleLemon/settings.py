@@ -41,7 +41,7 @@ INSTALLED_APPS = [
     'LittleLemonAPI',
     'djoser',
     'rest_framework.authtoken'
-   
+
 ]
 
 MIDDLEWARE = [
@@ -59,7 +59,7 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.JSONRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',
         # pipenv install djangorestframework-xml
-       # 'rest_framework_xml.renderers.XMLRenderer'
+        # 'rest_framework_xml.renderers.XMLRenderer'
     ],
     # gonna use djoser for auth
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -76,7 +76,8 @@ REST_FRAMEWORK = {
 }
 
 DJOSER = {
-    "USER_ID_FIELD": "username"
+    "USER_ID_FIELD": "id"
+
 }
 
 ROOT_URLCONF = 'LittleLemon.urls'
