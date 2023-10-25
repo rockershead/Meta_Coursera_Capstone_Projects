@@ -20,7 +20,6 @@ import datetime
 
 @api_view(['GET', 'POST'])
 @throttle_classes([UserRateThrottle])
-@permission_classes([IsAdminUser])
 def category_items(request):
     if (request.method == 'GET'):
         items = Category.objects.all()
@@ -28,11 +27,13 @@ def category_items(request):
         return_items = CategorySerializer(items, many=True)
         return Response(return_items.data)
     elif (request.method == 'POST'):
-
-        serialized_item = CategorySerializer(data=request.data)
-        serialized_item.is_valid(raise_exception=True)
-        serialized_item.save()
-        return Response(serialized_item.data, status.HTTP_201_CREATED)
+        if (request.user.groups.filter(name='Manager').exists() or request.user.groups.filter(name='admin').exists()):
+            serialized_item = CategorySerializer(data=request.data)
+            serialized_item.is_valid(raise_exception=True)
+            serialized_item.save()
+            return Response(serialized_item.data, status.HTTP_201_CREATED)
+        else:
+            return Response({"message": "Not authorized to add category"})
 
 
 @api_view(['GET', 'POST'])
@@ -72,7 +73,7 @@ def menu_items(request):
         return_items = MenuItemGetSerializer(items, many=True)
         return Response(return_items.data)
     elif (request.method == 'POST'):
-        if request.user.groups.filter(name='Manager').exists():
+        if (request.user.groups.filter(name='Manager').exists() or request.user.groups.filter(name='admin').exists()):
             serialized_item = MenuItemPostSerializer(data=request.data)
             serialized_item.is_valid(raise_exception=True)
             serialized_item.save()
@@ -87,18 +88,18 @@ def single_item(request, id):
     item = get_object_or_404(MenuItem, pk=id)
     if (request.method == 'GET'):
 
-        return_item = MenuItemSerializer(item)
+        return_item = MenuItemGetSerializer(item)
         return Response(return_item.data)
-    elif (request.method == 'PUT'):
-        if request.user.groups.filter(name='Manager').exists():
-            serialized_item = MenuItemSerializer(item, data=request.data)
+    elif (request.method == 'PUT' or request.method == 'PATCH'):
+        if (request.user.groups.filter(name='Manager').exists() or request.user.groups.filter(name='admin').exists()):
+            serialized_item = MenuItemPostSerializer(item, data=request.data)
             serialized_item.is_valid(raise_exception=True)
             serialized_item.save()
             return Response(serialized_item.data, status.HTTP_201_CREATED)
         else:
             return Response({"message": "Unauthorized to do this operation"})
     elif (request.method == 'DELETE'):
-        if request.user.groups.filter(name='Manager').exists():
+        if (request.user.groups.filter(name='Manager').exists() or request.user.groups.filter(name='admin').exists()):
             item.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         else:
@@ -145,11 +146,13 @@ def delete_manager(request, id):
 
 
 # assign to delivery crew
+# admin or manager can assign delivery crew
 @api_view(['POST', 'GET'])
 @throttle_classes([UserRateThrottle])
 @permission_classes([IsAuthenticated])
 def delivery_crew(request):
-    if request.user.groups.filter(name='Manager').exists():
+    print(request.user.groups.filter(name='admin').exists())
+    if (request.user.groups.filter(name='Manager').exists() or request.user.groups.filter(name='admin').exists()):
         delivery_crews = Group.objects.get(name='Delivery Crew')
         if request.method == 'POST':
             if (request.data['username']):
@@ -171,20 +174,23 @@ def delivery_crew(request):
         return Response({"message": "error"}, status.HTTP_400_BAD_REQUEST)
 
     else:
-        return Response({"message": "You are not authorized to assign users to this group"})
+        return Response({"message": "You are not authorized to assign users or view users in this group"})
 
 
 @api_view(['DELETE'])
 @throttle_classes([UserRateThrottle])
 @permission_classes([IsAuthenticated])
 def delete_delivery_crew(request, id):
-    user = get_object_or_404(User, pk=id)
-    delivery_crews = Group.objects.get(name='Delivery Crew')
-    if request.method == 'DELETE':
-        delivery_crews.user_set.remove(user)
-        return Response({"message": "User deleted from delivery crew group"})
+    if (request.user.groups.filter(name='Manager').exists() or request.user.groups.filter(name='admin').exists()):
+        user = get_object_or_404(User, pk=id)
+        delivery_crews = Group.objects.get(name='Delivery Crew')
+        if request.method == 'DELETE':
+            delivery_crews.user_set.remove(user)
+            return Response({"message": "User deleted from delivery crew group"})
 
-    return Response({"message": "error"}, status.HTTP_400_BAD_REQUEST)
+        return Response({"message": "error"}, status.HTTP_400_BAD_REQUEST)
+    else:
+        return Response({"message": "Not authorized to delete users in this group"})
 
 
 # cart###make sure its for the particular user.make sure role is not delivery or manager
@@ -342,7 +348,7 @@ def single_order_item(request, id):
             return Response(serialized_item.data, status.HTTP_201_CREATED)
 
         else:
-            return Response({"message": "Not authorized"})
+            return Response({"message": "Not authorized to update order"})
 
     # only manager can delete
     if (request.method == 'DELETE'):
